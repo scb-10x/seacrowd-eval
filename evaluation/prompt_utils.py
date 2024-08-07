@@ -1,4 +1,120 @@
 TASK_TO_PROMPT = {
+    'tha': {
+        ####
+        # NLU Tasks
+        ####
+
+        # Tasks.SENTIMENT_ANALYSIS
+        'SA': [
+            'Classify the sentiment of the text below.\n[INPUT] => Sentiment ([OPTIONS]): [LABEL_CHOICE]',
+        ],
+        # Tasks.EMOTION_CLASSIFICATION
+        'EC': [
+            'Classify the emotion of the text below.\n[INPUT] => Emotion ([OPTIONS]): [LABEL_CHOICE]',
+        ],
+        # Tasks.TEXTUAL_ENTAILMENT
+        'TE': [
+            'Choose the most appropriate relationship ([OPTIONS]) between the premise and hypothesis:\nRelationship between "[INPUT_B]" and "[INPUT_A]": [LABEL_CHOICE]',
+        ],
+        # Tasks.QUESTION_ANSWERING
+        'QA': [
+            'Refer to the passage below and answer the following question:\nPassage: [CONTEXT]\nQuestion: [QUESTION]\nChoices: [ANSWER_CHOICES]\nAnswer: [LABEL_CHOICE]',
+        ],
+        # Tasks.TOPIC_MODELING
+        'TL': [
+            'Classify the topic of the text below.\n[INPUT] => Topic ([OPTIONS]): [LABEL_CHOICE]',
+        ],
+        # Tasks.MORALITY_CLASSIFICATION
+        'MC': [
+            'Classify the morality of the text below.\n[INPUT] => Morality ([OPTIONS]): [LABEL_CHOICE]',
+        ],
+        # Tasks.COMMONSENSE_REASONING
+        'CR': [
+            'Question: [QUESTION]\nWhat reply makes more sense to answer this question?\nChoices: [ANSWER_CHOICES]\nAnswer: [LABEL_CHOICE]',
+        ],
+        # Tasks.LANGUAGE_IDENTIFICATION
+        'LI': [
+            'Classify the language of the text below.\n[INPUT] => [LABEL_CHOICE]',
+        ],
+
+        ####
+        # NLG Tasks
+        ####
+
+        # Tasks.MACHINE_TRANSLATION
+        'MT': [
+            'Translate the following text from [SOURCE] to [TARGET]. Give your translation directly without any extra information.\nText: [INPUT]\nTranslation:',
+        ],
+        
+        # Tasks.SUMMARIZATION
+        'SUM': [
+            'Write a summary from the following text.\nText: [INPUT]\nSummary:',
+        ],
+
+        # Tasks.CROSSLINGUAL_SUMMARIZATION
+        'CSUM': [
+            'Write a summary from the following text.\nText: [INPUT]\nSummary:',
+        ],
+
+        # Tasks.INSTRUCTION_TUNING
+        'IT': [
+            'Task: [INPUT]\n What is your output upon completing the instruction or question given?',
+        ],
+
+        # Task.QA_EXTRACTIVE_ABSTRACTIVE
+        'QAE':[
+            'Refer to the passage below and answer the following question:\nPassage: [CONTEXT]\nQuestion: [QUESTION]\nAnswer:',
+        ],
+
+        ####
+        # Speech Tasks
+        ####
+
+        # Tasks.SPEECH_RECOGNITION
+        'ASR': [''],
+        # Tasks.SPEECH_LANGUAGE_IDENTIFICATION
+        'SPEECH_LID': [''],
+
+        ####
+        # VL Tasks
+        ####
+
+        # Tasks.IMAGE_CAPTIONING
+        'IC': [
+            'Caption the following image in [LANGUAGE].'
+        ],
+        # Tasks.VISUAL_QUESTION_ANSWERING
+        'VQA': [
+            '[IMAGE] Based on the image, [QUESTION]'
+        ],
+        # Tasks.SIGN_LANGUAGE_RECOGNITION
+        'SLR': [
+            # No tasks so far. Leaving this blank for now.
+            ''
+        ],
+        # Tasks.OPTICAL_CHARACTER_RECOGNITION
+        'OCR': [
+            ''
+        ],
+        # Tasks.STYLIZED_IMAGE_CAPTIONING
+        'SIC': [
+            # No tasks so far. Leaving this blank for now.
+            ''
+        ],
+        # Tasks.VISUALLY_GROUNDED_REASONING
+        'VGR': [
+            # No tasks so far. Leaving this blank for now.
+            ''
+        ],
+        # Tasks.VIDEO_CAPTIONING
+        'VC': [
+            ''
+        ],
+        # Tasks.VIDEO_TO_TEXT_RETRIEVAL
+        'V2TR': [
+            ''
+        ],
+    },
     'eng': {
         ####
         # NLU Tasks
@@ -715,6 +831,9 @@ LABEL_LANG_MAP ={
         'eng': {0: 'a', 1: 'b', 2: 'c', 3: 'd'},
         'ind': {0: 'a', 1: 'b', 2: 'c', 3: 'd'},
     },
+    "thaiexam_qa": {
+        'eng': {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e'},
+    },
     "m3exam_vie_seacrowd_qa": {
         'eng': {0: 'a', 1: 'b', 2: 'c', 3: 'd'},
         'ind': {0: 'a', 1: 'b', 2: 'c', 3: 'd'},
@@ -917,6 +1036,11 @@ LANG_MAP = {
         'en': 'English',
         'tam': 'Tamil'
     },
+    'tha': {
+        'tha': 'Thai',
+        'eng': 'English',
+        'eng-US': 'English',
+    },
     'ind': {
         'ind': 'Indonesia',
         'xdy': 'Dayak',
@@ -933,7 +1057,10 @@ LANG_MAP = {
 }
 
 def get_label_mapping(dset_subset, prompt_lang):
-    return LABEL_LANG_MAP[dset_subset][prompt_lang]
+    try:
+        return LABEL_LANG_MAP[dset_subset][prompt_lang]
+    except KeyError:
+        return LABEL_LANG_MAP[dset_subset]['eng']
 
 def get_lang_name(prompt_lang, lang_code):
     return LANG_MAP[prompt_lang][lang_code]

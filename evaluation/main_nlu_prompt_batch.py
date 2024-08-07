@@ -19,9 +19,9 @@ from sklearn.metrics import classification_report, precision_recall_fscore_suppo
 import torch
 import torch.nn.functional as F
 
-from peft import PeftModel
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, AutoModelForCausalLM, set_seed
+from transformers import set_seed
 
+from model_utils import load_model_and_tokenizer
 from prompt_utils import get_prompt, get_label_mapping
 from data_utils import load_nlu_datasets
 
@@ -52,7 +52,7 @@ def to_prompt(input, prompt, labels, prompt_lang, schema):
                 prompt = prompt.replace('[OPTIONS]', ' '.join(new_labels))
     elif schema == "qa":
         if "[CONTEXT]" in prompt:
-            context = "" if input['context'] is None else input['context']
+            context = "" if 'context' not in input.keys() or input['context'] is not None else input['context']
             prompt = prompt.replace('[CONTEXT]', context)
         prompt = prompt.replace('[QUESTION]', input['question'])
 
@@ -70,20 +70,13 @@ def to_prompt(input, prompt, labels, prompt_lang, schema):
 @torch.inference_mode()
 def get_logprobs(model, tokenizer, inputs, label_ids=None, label_attn=None):
     inputs = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True, max_length=1024).to('cuda')
-    if model.config.is_encoder_decoder:
-        label_ids = label_ids.repeat((inputs['input_ids'].shape[0],1))
-        label_attn = label_attn.repeat((inputs['input_ids'].shape[0],1))
-        logits = model(**inputs, labels=label_ids).logits
-        logprobs = torch.gather(F.log_softmax(logits, dim=-1), 2, label_ids.unsqueeze(2)).squeeze(dim=-1) * label_attn
-        return logprobs.sum(dim=-1).cpu()
-    else:
-        if "sea-lion" in MODEL:
-            del inputs["token_type_ids"]
-        logits = model(**inputs).logits
-        output_ids = inputs["input_ids"][:, 1:]
-        logprobs = torch.gather(F.log_softmax(logits, dim=-1), 2, output_ids.unsqueeze(2)).squeeze(dim=-1)
-        logprobs[inputs["attention_mask"][:, :-1] == 0] = 0
-        return logprobs.sum(dim=1).cpu()
+    if 'sea-lion' in MODEL and 'token_type_ids' in inputs.keys():
+        del inputs["token_type_ids"]
+    logits = model(**inputs).logits
+    output_ids = inputs["input_ids"][:, 1:]
+    logprobs = torch.gather(F.log_softmax(logits, dim=-1), 2, output_ids.unsqueeze(2)).squeeze(dim=-1)
+    logprobs[inputs["attention_mask"][:, :-1] == 0] = 0
+    return logprobs.sum(dim=1).cpu()
 
 @torch.inference_mode()
 def predict_classification(model, tokenizer, prompts, labels):
@@ -107,18 +100,11 @@ def predict_classification(model, tokenizer, prompts, labels):
 
 if __name__ == '__main__':
     if len(sys.argv) < 4:
-        raise ValueError('main_nlu_prompt.py <prompt_lang> <model_path_or_name> <batch_size> <save_every (OPTIONAL)>')
+        raise ValueError('main_nlu_prompt.py <prompt_lang> <model_path_or_name> <batch_size>')
 
     prompt_lang = sys.argv[1]
     MODEL = sys.argv[2]
     BATCH_SIZE = int(sys.argv[3])
-    ADAPTER = ''
-    # if 'bactrian' in MODEL:
-    #     MODEL, ADAPTER = MODEL.split('---')
-
-    SAVE_EVERY = 10
-    if len(sys.argv) == 5:
-        SAVE_EVERY = int(sys.argv[4])
 
     out_dir = './outputs_nlu'
     metric_dir = './metrics_nlu'
@@ -140,27 +126,10 @@ if __name__ == '__main__':
     set_seed(42)
 
     # Load Model
-    tokenizer = AutoTokenizer.from_pretrained(MODEL, truncation_side='left', padding_side='right', trust_remote_code=True)
-    if ADAPTER != "":
-        model = AutoModelForCausalLM.from_pretrained(MODEL, device_map="auto", load_in_8bit=True, trust_remote_code=True)
-        model = PeftModel.from_pretrained(model, ADAPTER, torch_dtype=torch.float16)
-        MODEL = ADAPTER # for file naming
-    elif "bloom" in MODEL or "xglm" in MODEL or "gpt2" in MODEL or "sea-lion" in MODEL or "Merak" in MODEL or "SeaLLM" in MODEL or "Llama" in MODEL or "llama" in MODEL or "falcon" in MODEL or "Sailor" in MODEL or "PhoGPT" in MODEL or "Mistral" in MODEL or "Qwen" in MODEL or 'LLaMa' in MODEL:
-        model = AutoModelForCausalLM.from_pretrained(MODEL, device_map="auto", load_in_8bit=True, trust_remote_code=True)
-        if "sea-lion" in MODEL or "Mistral" in MODEL or "Llama" in MODEL or "falcon" in MODEL:
-            tokenizer.pad_token = tokenizer.eos_token # Use EOS to pad label
-        elif "Qwen" in MODEL:
-            tokenizer.add_special_tokens({'pad_token': '<|endoftext|>'})
-    else:
-        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL, device_map="auto", load_in_8bit=True, trust_remote_code=True)
-        tokenizer.pad_token = tokenizer.eos_token # Use EOS to pad label
     
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token # Use EOS to pad label
+    model, tokenizer = load_model_and_tokenizer(MODEL, compile=False)
 
-    model.eval()
     with torch.no_grad():
-
         metrics = []
         labels = []
         for i, dset_subset in enumerate(nlu_datasets.keys()):
@@ -258,12 +227,6 @@ if __name__ == '__main__':
                                 golds.append(label)
                             prompts, labels = [], []
                             count += 1
-                            
-                        if count == SAVE_EVERY:
-                            # partial saving
-                            inference_df = pd.DataFrame(list(zip(inputs, preds, golds)), columns =["Input", 'Pred', 'Gold'])
-                            inference_df.to_csv(f'{out_dir}/{dset_subset}_{prompt_lang}_{prompt_id}_{MODEL.split("/")[-1]}.csv', index=False)
-                            count = 0
                             
                     if len(prompts) > 0:
                         out = predict_classification(model, tokenizer, prompts, label_names)

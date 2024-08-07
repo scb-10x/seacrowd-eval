@@ -4,88 +4,18 @@ from os.path import exists
 
 import pandas as pd
 from tqdm import tqdm
+from metrics_utils import generation_metrics_fn
+from model_utils import load_model_and_tokenizer
 from prompt_utils import get_prompt, get_lang_name
 from data_utils import load_nlg_datasets
 
 import torch
-
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, AutoModelForCausalLM, BloomTokenizerFast, set_seed
+from transformers import set_seed
 from nusacrowd.utils.constants import Tasks
-
-from sacremoses import MosesTokenizer
-import datasets, evaluate
 from anyascii import anyascii
-from retry import retry
 
 
-DEBUG=True
-
-""" Generation metrics """
-bleu = datasets.load_metric('bleu')
-rouge = datasets.load_metric('rouge')
-sacrebleu = datasets.load_metric('sacrebleu')
-chrf = datasets.load_metric('chrf')
-meteor = evaluate.load('meteor')
-squad_v2_metric = datasets.load_metric('squad_v2')
-mt = MosesTokenizer(lang='id')
-
-def generation_metrics_fn(list_hyp, list_label):
-    # hyp and label are both list of string
-    # Check if the lists are empty
-    if not list_hyp or not list_label or len(list_hyp) != len(list_label):
-        raise ValueError("Input lists must be non-empty and of the same length")
-    
-    list_hyp = [hyp if hyp is not None else "" for hyp in list_hyp]
-    list_label = [label if label is not None else "" for label in list_label]
-    
-    # Tokenize the hypotheses and labels for BLEU computation
-    list_hyp_bleu = list(map(lambda x: mt.tokenize(x), list_hyp))
-    list_label_bleu = list(map(lambda x: [mt.tokenize(x)], list_label))    
-    list_label_sacrebleu = list(map(lambda x: [x], list_label))
-
-    metrics = {}
-
-    # Compute BLEU score
-    try:
-        metrics["BLEU"] = bleu._compute(list_hyp_bleu, list_label_bleu)['bleu'] * 100
-    except ZeroDivisionError:
-        metrics["BLEU"] = 0.0
-
-    # Compute SacreBLEU score
-    try:
-        metrics["SacreBLEU"] = sacrebleu._compute(list_hyp, list_label_sacrebleu)['score']
-    except ZeroDivisionError:
-        metrics["SacreBLEU"] = 0.0
-
-    # Compute chrF++ score
-    try:
-        metrics["chrF++"] = chrf._compute(list_hyp, list_label_sacrebleu)['score']
-    except ZeroDivisionError:
-        metrics["chrF++"] = 0.0
-
-    # Compute METEOR score
-    try:
-        metrics["meteor"] = meteor.compute(predictions=list_hyp, references=list_label)['meteor'] * 100
-    except ZeroDivisionError:
-        metrics["meteor"] = 0.0
-
-    # Compute ROUGE scores
-    try:
-        rouge_score = rouge._compute(list_hyp, list_label)
-        metrics["ROUGE1"] = rouge_score['rouge1'].mid.fmeasure * 100
-        metrics["ROUGE2"] = rouge_score['rouge2'].mid.fmeasure * 100
-        metrics["ROUGEL"] = rouge_score['rougeL'].mid.fmeasure * 100
-        metrics["ROUGELsum"] = rouge_score['rougeLsum'].mid.fmeasure * 100
-    except ZeroDivisionError:
-        metrics["ROUGE1"] = 0.0
-        metrics["ROUGE2"] = 0.0
-        metrics["ROUGEL"] = 0.0
-        metrics["ROUGELsum"] = 0.0
-
-    return metrics
-
-
-def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False, use_template=False):
+def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False):
     if '[INPUT]' in prompt:
         prompt = prompt.replace('[INPUT]', input['text_1'])
 
@@ -102,8 +32,6 @@ def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False
             src_lang = task_names[-4]
             tgt_lang = task_names[-3]
 
-        # print(src_lang, tgt_lang)
-
         # Replace src and tgt lang name
         prompt = prompt.replace('[SOURCE]', get_lang_name(prompt_lang, src_lang))
         prompt = prompt.replace('[TARGET]', get_lang_name(prompt_lang, tgt_lang))
@@ -117,48 +45,35 @@ def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False
             prompt += " " + input['answer'][0]
         else:
             prompt += " " + input['text_2']
-
-    if use_template:
-        prompt_template = "### USER:\n{human_prompt}\n\n### RESPONSE:\n"
-        prompt = prompt_template.format(human_prompt=prompt)
     
     return prompt
 
+def _get_terminator(tokenizer):
+    eos_tokens = ["<|eot_id|>", "<|im_start|>", "<|im_end|>"]
+    terminators = [
+        tokenizer.eos_token_id,
+    ]
+    for t in eos_tokens:
+        tok = tokenizer.convert_tokens_to_ids(t)
+        if isinstance(tok, int):
+            terminators.append(tok)
+    return terminators
 
 def predict_generation(prompts, model_name, tokenizer, model):
-    #model = model.to('cuda')
+    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=1024).to(model.device)
+    input_size = inputs["input_ids"].shape[1]
+    if 'sea-lion' in model_name and 'token_type_ids' in inputs.keys():
+        del inputs["token_type_ids"]
 
-    if "Qwen" in model_name:
-        preds = []
-        for prompt in prompts:
-            pred, _ = model.chat(tokenizer, prompt, history=None)
-            preds.append(pred)
-        return preds
-    else:
-        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=1024).to('cuda')
-        input_size = inputs["input_ids"].shape[1]
-
-        if "sea-lion" in model_name:
-            inputs.pop("token_type_ids", None)
-        
-        if model.config.is_encoder_decoder:
-            outputs = model.generate(**inputs, do_sample=True, min_length=1, max_length=100)
-            preds = tokenizer.batch_decode(outputs, skip_special_tokens=True) 
-            return preds
-        else:
-            outputs = model.generate(**inputs, do_sample=True, min_length=input_size+1, max_length=input_size+100)
-            if "llama" in model_name:
-                preds = [p.strip() for p in tokenizer.batch_decode(outputs[:,inputs["input_ids"].shape[1]:], skip_special_tokens=True)]
-            else:
-                preds = tokenizer.batch_decode(outputs[:,inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-            return preds
+    outputs = model.generate(**inputs, do_sample=True, max_new_tokens=300, eos_token_id=_get_terminator(tokenizer))
+    preds = tokenizer.batch_decode(outputs[:,input_size:], skip_special_tokens=True)
+    return preds
 
 
 if __name__ == '__main__':
     if len(sys.argv) != 5:
         raise ValueError('main_nlg_prompt.py <prompt_lang> <model_path_or_name> <n_shot> <n_batch>')
 
-    # TODO: reduce hardcoded vars
     out_dir = './outputs_nlg'
     metric_dir = './metrics_nlg'
     os.makedirs(out_dir, exist_ok=True)
@@ -186,37 +101,7 @@ if __name__ == '__main__':
 
     # Load Model & Tokenizer
     # Tokenizer initialization
-    use_prompt_template = "sea-lion" in MODEL and "instruct" in MODEL
-    tokenizer = AutoTokenizer.from_pretrained(MODEL, truncation_side='left', trust_remote_code=True)
-    tokenizer.padding_side = "left"
-
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.bos_token if tokenizer.bos_token is not None else tokenizer.eos_token
-    
-    if "Qwen" in MODEL:
-        tokenizer.add_special_tokens({'pad_token': '<|endoftext|>'})
-
-    # Model initialization
-    fp16_args = {'device_map': "auto", 'torch_dtype': torch.float16, 'load_in_8bit': True}  # needed for larger model
-    if "aya-101" in MODEL:
-        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL, device_map="auto", load_in_8bit=True, trust_remote_code=True, resume_download=True)
-    elif "mt0" in MODEL or "mt5" in MODEL:
-        extra_args = fp16_args if "xxl" in MODEL else {}
-        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL, resume_download=True, trust_remote_code=True, **extra_args)
-        if "xxl" not in MODEL:
-            model = model.to('cuda')
-    else:
-        extra_args = fp16_args if "7b" in MODEL.lower() or "13b" in MODEL.lower() or "8b" in MODEL.lower() else {}
-        model = AutoModelForCausalLM.from_pretrained(MODEL, resume_download=True, trust_remote_code=True, **extra_args)
-        if "SeaLLM" in MODEL or "Qwen" in MODEL or 'falcon' in MODEL:
-            #if "SeaLLM" in MODEL or "llama" in MODEL:
-            # quick fix for tensor error
-            # https://github.com/facebookresearch/llama/issues/380
-            model = model.bfloat16()
-    
-    if model is not None:
-        #model.cuda()
-        model.eval()
+    model, tokenizer = load_model_and_tokenizer(MODEL, compile=True)
 
     metrics = {'dataset': []}
     for i, dset_subset in enumerate(nlg_datasets.keys()):
@@ -236,8 +121,6 @@ if __name__ == '__main__':
         else:
             data = nlg_dset['train']
 
-        #data = data.shard(10000, 0) # get shard the size of the dataset for efficiency
-
         if 'train' in nlg_dset.keys():
             few_shot_data = nlg_dset['train']
         elif 'devtest' in nlg_dset.keys():
@@ -249,9 +132,9 @@ if __name__ == '__main__':
             inputs = []
             preds = []
             preds_latin = []
-            golds = []  
+            golds = []
             print(f"PROMPT ID: {prompt_id}")
-            print(f"SAMPLE PROMPT: {to_prompt(data[0], prompt_template, prompt_lang, dset_subset, task_type.value, use_template=use_prompt_template)}")
+            print(f"SAMPLE PROMPT: {to_prompt(data[0], prompt_template, prompt_lang, dset_subset, task_type.value)}")
 
             few_shot_text_list = []
             if N_SHOT > 0:
@@ -260,7 +143,7 @@ if __name__ == '__main__':
                     if task_type != Tasks.QUESTION_ANSWERING and len(sample['text_1']) < 20:
                         continue
                     few_shot_text_list.append(
-                        to_prompt(sample, prompt_template, dset_subset, task_type.value, with_label=True, use_template=use_prompt_template)
+                        to_prompt(sample, prompt_template, prompt_lang, dset_subset, task_type.value, with_label=True)
                     )
                     if len(few_shot_text_list) == N_SHOT:
                         break
@@ -288,8 +171,9 @@ if __name__ == '__main__':
                             continue
                         
                         # Buffer
-                        prompt_text = to_prompt(sample, prompt_template, prompt_lang, dset_subset, task_type.value, use_template=use_prompt_template)
+                        prompt_text = to_prompt(sample, prompt_template, prompt_lang, dset_subset, task_type.value)
                         prompt_text = '\n\n'.join(few_shot_text_list + [prompt_text])
+                        prompt_text = tokenizer.apply_chat_template([{'role': 'user', 'content': prompt_text}], add_generation_prompt=True, tokenize=False)
                         prompts.append(prompt_text)
 
                         batch_golds.append(sample['answer'][0] if 'answer' in sample else sample['text_2'])

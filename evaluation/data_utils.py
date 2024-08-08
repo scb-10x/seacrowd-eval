@@ -7,6 +7,7 @@ import datasets
 
 def patch_resolve_trust_remote_code():
     def resolve_trust_remote_code(trust_remote_code: bool | None, repo_id: str):
+        print('Patch `trust_remote_code` to enable fully auto-run. Beware of the risk of code injection in the dataset.')
         return True
     datasets.load.resolve_trust_remote_code = resolve_trust_remote_code
 

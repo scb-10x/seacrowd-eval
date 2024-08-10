@@ -4,6 +4,8 @@ import pandas as pd
 import datasets
 from enum import Enum
 import datasets
+import nltk
+nltk.download('punkt_tab')
 
 def patch_resolve_trust_remote_code():
     def resolve_trust_remote_code(trust_remote_code: bool | None, repo_id: str):
@@ -39,8 +41,8 @@ def load_nlu_datasets():
 
     for config_name in NLU_TASK_LIST:
         if config_name == 'thaiexam_qa':
-            ds = datasets.load_dataset('kunato/thai-exam-seacrowd')
-            cfg_name_to_dset_map[config_name] = (ds, Tasks.COMMONSENSE_REASONING)
+            ds = datasets.load_dataset('kunato/thai-exam-seacrowd', revision='59198720623a81239dbbde1e77a98a183f002c41')
+            cfg_name_to_dset_map[config_name] = (ds, Tasks.QUESTION_ANSWERING)
         else:
             schema = config_name.split('_')[-1]
             con = nc_conhelp.for_config_name(config_name)

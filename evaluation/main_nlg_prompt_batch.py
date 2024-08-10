@@ -17,7 +17,7 @@ from anyascii import anyascii
 
 def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False):
     if '[INPUT]' in prompt:
-        prompt = prompt.replace('[INPUT]', input['text_1'])
+        prompt = prompt.replace('[INPUT]', input['text_1'].strip())
 
     if task_type == Tasks.MACHINE_TRANSLATION.value:
 
@@ -37,9 +37,16 @@ def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False
         prompt = prompt.replace('[TARGET]', get_lang_name(prompt_lang, tgt_lang))
     
     if task_type == Tasks.QUESTION_ANSWERING.value:
-        prompt = prompt.replace('[CONTEXT]', input['context'])
-        prompt = prompt.replace('[QUESTION]', input['question'])
-    
+        prompt = prompt.replace('[CONTEXT]', input['context'].strip())
+        prompt = prompt.replace('[QUESTION]', input['question'].strip())
+        # remove line that mention about [LABEL_CHOICE]
+        new_prompts = []
+        for p in prompt.split('\n'):
+            if '[ANSWER_CHOICES]' not in p:
+                new_prompts.append(p)
+        prompt = '\n'.join(new_prompts)
+        prompt = prompt.replace('[LABEL_CHOICE]', '')
+
     if with_label:
         if task_type == Tasks.QUESTION_ANSWERING.value:
             prompt += " " + input['answer'][0]

@@ -37,10 +37,10 @@ def to_prompt(input, prompt, labels, prompt_lang, schema):
     if schema == "text" or schema == "pairs":
         # single label
         if 'text' in input:
-            prompt = prompt.replace('[INPUT]', input['text'])
+            prompt = prompt.replace('[INPUT]', input['text'].strip())
         else:
-            prompt = prompt.replace('[INPUT_A]', input['text_1'])
-            prompt = prompt.replace('[INPUT_B]', input['text_2'])
+            prompt = prompt.replace('[INPUT_A]', input['text_1'].strip())
+            prompt = prompt.replace('[INPUT_B]', input['text_2'].strip())
 
         # replace [OPTIONS] to A, B, or C
         if "[OPTIONS]" in prompt:
@@ -52,15 +52,15 @@ def to_prompt(input, prompt, labels, prompt_lang, schema):
                 prompt = prompt.replace('[OPTIONS]', ' '.join(new_labels))
     elif schema == "qa":
         if "[CONTEXT]" in prompt:
-            context = "" if 'context' not in input.keys() or input['context'] is not None else input['context']
+            context = "" if 'context' not in input.keys() or input['context'] is None else input['context'].strip()
             prompt = prompt.replace('[CONTEXT]', context)
-        prompt = prompt.replace('[QUESTION]', input['question'])
+        prompt = prompt.replace('[QUESTION]', input['question'].strip())
 
         choices = "" 
         for i, choice in enumerate(input['choices']):
             if i > 0:
                 choices += "\n"
-            choices += f"{string.ascii_lowercase[i]}. {choice}"
+            choices += f"{string.ascii_lowercase[i]}. {choice.strip()}"
         prompt = prompt.replace('[ANSWER_CHOICES]', choices)
     else:
         raise ValueError("Only support `text`, `pairs`, and `qa` schemas.")

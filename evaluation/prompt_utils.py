@@ -6,35 +6,35 @@ TASK_TO_PROMPT = {
 
         # Tasks.SENTIMENT_ANALYSIS
         'SA': [
-            'Classify the sentiment of the text below.\n[INPUT] => Sentiment ([OPTIONS]): [LABEL_CHOICE]',
+            'จง classify sentiment ของข้อความด้านล่าง\n[INPUT] => Sentiment ([OPTIONS]): [LABEL_CHOICE]',
         ],
         # Tasks.EMOTION_CLASSIFICATION
         'EC': [
-            'Classify the emotion of the text below.\n[INPUT] => Emotion ([OPTIONS]): [LABEL_CHOICE]',
+            'จง Classify อารมณ์และความรู้สึกของข้อความด้านล่าง\n[INPUT] => Emotion ([OPTIONS]): [LABEL_CHOICE]',
         ],
         # Tasks.TEXTUAL_ENTAILMENT
         'TE': [
-            'Choose the most appropriate relationship ([OPTIONS]) between the premise and hypothesis:\nRelationship between "[INPUT_B]" and "[INPUT_A]": [LABEL_CHOICE]',
+            'เลือกความสัมพันธ์ที่เหมาะสมที่สุด ([OPTIONS]) ระหว่างข้อความตั้งต้นและสมมติฐาน:\nความสัมพันธ์ ระหว่าง "[INPUT_B]" กับ "[INPUT_A]": [LABEL_CHOICE]',
         ],
         # Tasks.QUESTION_ANSWERING
         'QA': [
-            'Refer to the passage below and answer the following question:\nPassage: [CONTEXT]\nQuestion: [QUESTION]\nChoices: [ANSWER_CHOICES]\nAnswer: [LABEL_CHOICE]',
+            '[CONTEXT]\n---\nคำถาม: [QUESTION]\nตัวเลือก: [ANSWER_CHOICES]\nคำตอบ: [LABEL_CHOICE]',
         ],
         # Tasks.TOPIC_MODELING
         'TL': [
-            'Classify the topic of the text below.\n[INPUT] => Topic ([OPTIONS]): [LABEL_CHOICE]',
+            'จง classify หัวข้อของข้อความด้านล่าง\n[INPUT] => Topic ([OPTIONS]): [LABEL_CHOICE]',
         ],
         # Tasks.MORALITY_CLASSIFICATION
         'MC': [
-            'Classify the morality of the text below.\n[INPUT] => Morality ([OPTIONS]): [LABEL_CHOICE]',
+            'จง classify ความถูกต้องทางศีลธรรมของข้อความด้านล่าง\n[INPUT] => Morality ([OPTIONS]): [LABEL_CHOICE]',
         ],
         # Tasks.COMMONSENSE_REASONING
         'CR': [
-            'Question: [QUESTION]\nWhat reply makes more sense to answer this question?\nChoices: [ANSWER_CHOICES]\nAnswer: [LABEL_CHOICE]',
+            'คำถาม: [CONTEXT]\nคำตอบใดที่มีเหตุผลมากกว่าในการตอบคำถามนี้?\nตัวเลือก: [ANSWER_CHOICES]\nคำตอบ: [LABEL_CHOICE]',
         ],
         # Tasks.LANGUAGE_IDENTIFICATION
         'LI': [
-            'Classify the language of the text below.\n[INPUT] => [LABEL_CHOICE]',
+            'จง classify ภาษาของข้อความด้านล่าง\n[INPUT] => [LABEL_CHOICE]',
         ],
 
         ####
@@ -43,27 +43,27 @@ TASK_TO_PROMPT = {
 
         # Tasks.MACHINE_TRANSLATION
         'MT': [
-            'Translate the following text from [SOURCE] to [TARGET]. Give your translation directly without any extra information.\nText: [INPUT]\nTranslation:',
+            'แปลข้อความต่อไปนี้จาก [SOURCE] เป็น [TARGET] ให้การแปลของคุณโดยตรงโดยไม่ต้องมีข้อมูลเพิ่มเติมใดๆ\nข้อความ: [INPUT]\nคำแปล:',
         ],
         
         # Tasks.SUMMARIZATION
         'SUM': [
-            'Write a summary from the following text.\nText: [INPUT]\nSummary:',
+            'จงสรุปข้อความด้านล่าง\nข้อความ: [INPUT]\nสรุป:',
         ],
 
         # Tasks.CROSSLINGUAL_SUMMARIZATION
         'CSUM': [
-            'Write a summary from the following text.\nText: [INPUT]\nSummary:',
+            'จงสรุปข้อความด้านล่าง\nข้อความ: [INPUT]\nสรุป:',
         ],
 
         # Tasks.INSTRUCTION_TUNING
         'IT': [
-            'Task: [INPUT]\n What is your output upon completing the instruction or question given?',
+            'Task: [INPUT]\n คำตอบของคุณคืออะไร?',
         ],
 
         # Task.QA_EXTRACTIVE_ABSTRACTIVE
         'QAE':[
-            'Refer to the passage below and answer the following question:\nPassage: [CONTEXT]\nQuestion: [QUESTION]\nAnswer:',
+            'โปรดอ้างอิงถึงข้อความด้านล่างนี้และตอบคำถามต่อไปนี้ โดยตอบโดยใช้แค่ข้อความที่อยู่ในบทความ:\nข้อความ: [CONTEXT]\nคำถาม: [QUESTION]\nคำตอบ:',
         ],
 
         ####

@@ -27,3 +27,5 @@ rouge_score==0.1.2
 pythainlp==5.0.4
 flash-attn==2.6.1
 nltk==3.8.1
+anthropic==0.33.0
+google-generativeai==0.7.2

@@ -1,7 +1,9 @@
 import abc
+import copy
 from dataclasses import dataclass
 import dataclasses
 from multiprocessing import Pool
+import os
 from typing import Dict, Optional, List, Union
 import numpy as np
 from retry import retry
@@ -11,9 +13,13 @@ from transformers import (
 )
 import torch
 import torch.nn.functional as F
-from openai import OpenAI
 import logging
 from functools import partial
+
+try:
+    import google.generativeai as genai
+except ImportError:
+    pass
 
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
@@ -21,9 +27,10 @@ httpx_logger.setLevel(logging.WARNING)
 MAX_GENERATION_LENGTH = 512
 
 openai_client = None
+anthropic_client = None
 
 
-@retry(Exception, tries=30, delay=10)
+@retry(Exception, tries=10, delay=20)
 def _call_openai(
     messages: List[Dict[str, str]],
     model_name: str,
@@ -40,6 +47,86 @@ def _call_openai(
         **kwargs
     )
     return completion.choices[0].message.content
+
+@retry(Exception, tries=10, delay=20)
+def _call_anthropic(
+    messages: List[Dict[str, str]],
+    model_name: str,
+    max_tokens=200,
+    temperature=0.0,
+    **kwargs
+):
+    system_kwargs = {}
+    if messages[0]['role'] == 'system':
+        system_msg = messages.pop(0)
+        system_kwargs['system'] = system_msg['content']
+    message = anthropic_client.messages.create(
+        model=model_name,
+        max_tokens=max_tokens,
+        messages=messages,
+        temperature=temperature,
+        **system_kwargs,
+        **kwargs
+    )
+    return message.content[0].text
+
+@retry(Exception, tries=10, delay=20)
+def _call_gemini(
+    messages: List[Dict[str, str]],
+    model_name: str,
+    max_tokens=200,
+    temperature=0.0,
+    **kwargs
+):
+    messages = copy.deepcopy(messages)
+    history = []
+    if messages[0]["role"] == "system":
+        system_msg = messages.pop(0)
+        gemini_client = genai.GenerativeModel(
+            model_name, system_instruction=system_msg["content"]
+        )
+    else:
+        gemini_client = genai.GenerativeModel(model_name)
+        
+    safe = [
+        {
+            "category": "HARM_CATEGORY_DANGEROUS",
+            "threshold": "BLOCK_NONE",
+        },
+        {
+            "category": "HARM_CATEGORY_HARASSMENT",
+            "threshold": "BLOCK_NONE",
+        },
+        {
+            "category": "HARM_CATEGORY_HATE_SPEECH",
+            "threshold": "BLOCK_NONE",
+        },
+        {
+            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            "threshold": "BLOCK_NONE",
+        },
+        {
+            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "threshold": "BLOCK_NONE",
+        },
+    ]
+    last_msg = messages.pop(-1)
+    for msg in messages:
+        role = "user" if msg["role"] == "user" else "model"
+        history.append({"role": role, "parts": msg["content"]})
+    
+    chat = gemini_client.start_chat(history=history)
+    response = chat.send_message(
+        last_msg["content"],
+        generation_config=genai.types.GenerationConfig(
+            candidate_count=1,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+            **kwargs
+        ),
+        safety_settings=safe
+    )
+    return response.text
 
 
 # Copy from vllm project
@@ -153,12 +240,28 @@ class AbsModel(abc.ABC):
         raise NotImplementedError()
 
 
-class OpenAIModel(AbsModel):
+class APIModel(AbsModel):
 
     def __init__(self, model_name):
         self.model_name = model_name
-        global openai_client
-        openai_client = OpenAI()
+        self.generate_fn = None
+        if "gpt" in self.model_name:
+            global openai_client
+            from openai import OpenAI
+
+            openai_client = OpenAI()
+            self.generate_fn = _call_openai
+        elif "claude" in self.model_name:
+            global anthropic_client
+            from anthropic import Anthropic
+
+            anthropic_client = Anthropic()
+            self.generate_fn = _call_anthropic
+        elif "gemini" in self.model_name:
+            genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+            self.generate_fn = _call_gemini
+        else:
+            raise NotImplementedError()
         self.max_generation_length = MAX_GENERATION_LENGTH
 
     def predict_classification(
@@ -176,8 +279,8 @@ class OpenAIModel(AbsModel):
         ]
         hyps = []
         with Pool(min(8, len(prompts))) as p:
-            _call_openai_fn = partial(_call_openai, model_name=self.model_name)
-            results = p.map(_call_openai_fn, inputs)
+            _generate_fn = partial(self.generate_fn, model_name=self.model_name)
+            results = p.map(_generate_fn, inputs)
 
         for response, _prompt in zip(results, prompts):
             selected_idx = -1
@@ -207,13 +310,13 @@ class OpenAIModel(AbsModel):
             prompts = [[dataclasses.asdict(p) for p in conv] for conv in prompts]
 
         with Pool(min(8, len(prompts))) as p:
-            _call_openai_fn = partial(
-                _call_openai,
+            _generate_fn = partial(
+                self.generate_fn,
                 model_name=self.model_name,
                 max_tokens=self.max_generation_length,
                 **kwargs
             )
-            results = p.map(_call_openai_fn, prompts)
+            results = p.map(_generate_fn, prompts)
         return results
 
 
@@ -353,8 +456,10 @@ def load_model_runner(model_name: str, fast=False):
         "gpt-4o-mini-2024-07-18",
         "gpt-4o-2024-05-13",
         "gpt-4-turbo-2024-04-09",
+        "claude-3-5-sonnet-20240620",
+        "gemini-1.5-flash-001"
     ]:
-        model_runner = OpenAIModel(model_name)
+        model_runner = APIModel(model_name)
     else:
         model_runner = HFModel(model_name, compile=fast)
     return model_runner

@@ -334,10 +334,10 @@ class HFModel(AbsModel):
             attn_implementation="flash_attention_2",
         )
         tokenizer.padding_side = "left"
-        model_max_length = _get_and_verify_max_len(model.config)
+        model_max_length = min(_get_and_verify_max_len(model.config), 8192)
         self.max_generation_length = MAX_GENERATION_LENGTH
-        print("model_max_length", model_max_length)
         self.model_max_length = model_max_length
+        print("model_max_length", self.model_max_length)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = (
                 tokenizer.bos_token

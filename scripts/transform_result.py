@@ -128,9 +128,11 @@ if __name__ == '__main__':
     parser.add_argument('--result_path', default='results')
     args = parser.parse_args()
     full_model_name = args.model_name
-    assert '/' in full_model_name
     if '/' in full_model_name:
         model_name = full_model_name.split('/')[-1]
+    else:
+        model_name = full_model_name
+        full_model_name = f'api/{model_name}'
     process_nlu_result(model_name, args.result_path, full_model_name=full_model_name)
     process_nlg_result(model_name, args.result_path, full_model_name=full_model_name)
     process_llm_result(model_name, args.result_path, full_model_name=full_model_name)

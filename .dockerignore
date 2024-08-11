@@ -3,3 +3,4 @@ LEADERBOARD_README.md
 build_and_push.sh
 output*/
 metrics*/
+.env

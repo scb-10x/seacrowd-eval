@@ -5,7 +5,7 @@ from os.path import exists
 import pandas as pd
 from tqdm import tqdm
 from metrics_utils import generation_metrics_fn
-from model_utils import load_model_and_tokenizer
+from model_utils import load_model_runner
 from prompt_utils import get_prompt, get_lang_name
 from data_utils import load_nlg_datasets
 
@@ -55,26 +55,6 @@ def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False
     
     return prompt
 
-def _get_terminator(tokenizer):
-    eos_tokens = ["<|eot_id|>", "<|im_start|>", "<|im_end|>"]
-    terminators = [
-        tokenizer.eos_token_id,
-    ]
-    for t in eos_tokens:
-        tok = tokenizer.convert_tokens_to_ids(t)
-        if isinstance(tok, int):
-            terminators.append(tok)
-    return terminators
-
-def predict_generation(prompts, model_name, tokenizer, model):
-    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=1024).to(model.device)
-    input_size = inputs["input_ids"].shape[1]
-    if 'sea-lion' in model_name and 'token_type_ids' in inputs.keys():
-        del inputs["token_type_ids"]
-
-    outputs = model.generate(**inputs, do_sample=True, max_new_tokens=300, eos_token_id=_get_terminator(tokenizer))
-    preds = tokenizer.batch_decode(outputs[:,input_size:], skip_special_tokens=True)
-    return preds
 
 
 if __name__ == '__main__':
@@ -108,10 +88,11 @@ if __name__ == '__main__':
 
     # Load Model & Tokenizer
     # Tokenizer initialization
-    model, tokenizer = load_model_and_tokenizer(MODEL, compile=True)
+    model_runner = load_model_runner(MODEL, fast=True)
 
     metrics = {'dataset': []}
     for i, dset_subset in enumerate(nlg_datasets.keys()):
+        print(f'=====({i+1}/{len(nlg_datasets.keys())}) {dset_subset} =====')
         nlg_dset, task_type = nlg_datasets[dset_subset]
 
         print(f"{i} {dset_subset} {task_type}")
@@ -180,14 +161,13 @@ if __name__ == '__main__':
                         # Buffer
                         prompt_text = to_prompt(sample, prompt_template, prompt_lang, dset_subset, task_type.value)
                         prompt_text = '\n\n'.join(few_shot_text_list + [prompt_text])
-                        prompt_text = tokenizer.apply_chat_template([{'role': 'user', 'content': prompt_text}], add_generation_prompt=True, tokenize=False)
                         prompts.append(prompt_text)
 
                         batch_golds.append(sample['answer'][0] if 'answer' in sample else sample['text_2'])
 
                         # Batch inference
                         if len(prompts) == N_BATCH:
-                            batch_preds = predict_generation(prompts, MODEL, tokenizer, model)
+                            batch_preds = model_runner.predict_generation(prompts)
                             for (prompt_text, pred, gold) in zip(prompts, batch_preds, batch_golds):
                                 inputs.append(prompt_text)
                                 preds.append(pred if pred is not None else '')
@@ -204,7 +184,7 @@ if __name__ == '__main__':
 
                     # Predict the rest inputs
                     if len(prompts) > 0:
-                        batch_preds = predict_generation(prompts, MODEL, tokenizer, model)
+                        batch_preds = model_runner.predict_generation(prompts)
                         for (prompt_text, pred, gold) in zip(prompts, batch_preds, batch_golds):
                             inputs.append(prompt_text)
                             preds.append(pred if pred is not None else '')

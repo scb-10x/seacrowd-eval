@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from openai import OpenAI, OpenAIError
 from tqdm.contrib.concurrent import thread_map
 from tqdm import tqdm
-from model_utils import load_model_and_tokenizer
+from model_utils import ChatMessage, load_model_runner
 from collections import defaultdict
 from transformers import set_seed
 
@@ -21,11 +21,6 @@ two_score_pattern = re.compile("\[\[(\d+\.?\d*),\s?(\d+\.?\d*)\]\]")
 two_score_pattern_backup = re.compile("\[(\d+\.?\d*),\s?(\d+\.?\d*)\]")
 one_score_pattern = re.compile("\[\[(\d+\.?\d*)\]\]")
 one_score_pattern_backup = re.compile("\[(\d+\.?\d*)\]")
-
-@dataclass
-class ChatMessage:
-    role: str
-    content: str
 
 @dataclass
 class LLMJudgePayload:
@@ -46,13 +41,10 @@ class LLMJudgeEvalHandler:
     ) -> None:
         self.data_path = data_path
         self.judge_num_workers = judge_num_workers
-        self.judge_model = 'gpt-4o'
+        self.judge_model = 'gpt-4o-2024-05-13'
         self.openai_client = OpenAI()
         self.judge_prompts = self._load_judge_prompts()
-        model, tokenizer = load_model_and_tokenizer(model_name, compile=True)
-        self.tokenizer = tokenizer
-        self.model = model
-        
+        self.model_runner = load_model_runner(model_name, fast=True)
 
     
     def _load_judge_prompts(self):
@@ -107,18 +99,6 @@ class LLMJudgeEvalHandler:
         return all(map(lambda x: x.is_done, payload))
 
 
-    def _get_terminator(self):
-        eos_tokens = ["<|eot_id|>", "<|im_start|>", "<|im_end|>"]
-        terminators = [
-            self.tokenizer.eos_token_id,
-        ]
-        for t in eos_tokens:
-            tok = self.tokenizer.convert_tokens_to_ids(t)
-            if isinstance(tok, int):
-                terminators.append(tok)
-        return terminators
-
-    @torch.inference_mode()
     def generate(self, payload: List[LLMJudgePayload], bs=4) -> List[LLMJudgePayload]:
         prompts = []
         done = []
@@ -127,7 +107,7 @@ class LLMJudgeEvalHandler:
                 done.append(i)
                 continue
             conv = self._get_conversations(row.turns, row.responses)
-            prompts.append(self.tokenizer.apply_chat_template([dataclasses.asdict(p) for p in conv], add_generation_prompt=True, tokenize=False))
+            prompts.append(conv)
 
         results = []
         assert (len(prompts) + len(done)) == len(payload)
@@ -138,11 +118,7 @@ class LLMJudgeEvalHandler:
                     break
                 batchs.append(prompts[i + j])
             
-            inputs = self.tokenizer(batchs, return_tensors="pt", padding=True).to(self.model.device)
-            if 'sea-lion' in model_name and 'token_type_ids' in inputs.keys():
-                del inputs["token_type_ids"]
-            outputs = self.model.generate(**inputs, do_sample=True, **payload[i].generation_kwargs, eos_token_id=self._get_terminator(), max_new_tokens=512)
-            preds = self.tokenizer.batch_decode(outputs[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+            preds = self.model_runner.predict_generation(batchs)
             results.extend(preds)
 
         assert (len(results) + len(done)) == len(payload)

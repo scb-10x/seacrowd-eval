@@ -403,25 +403,24 @@ class HFModel(AbsModel):
 
     @torch.inference_mode()
     def predict_generation(self, prompts: List[Union[str, ChatMessage]], **kwargs):
-        if self.tokenizer.chat_template is not None:
-            if isinstance(prompts[0], str):
-                prompts = [
-                    self.tokenizer.apply_chat_template(
-                        [{"role": "user", "content": p}],
-                        add_generation_prompt=True,
-                        tokenize=False,
-                    )
-                    for p in prompts
-                ]
-            else:
-                prompts = [
-                    self.tokenizer.apply_chat_template(
-                        [dataclasses.asdict(p) for p in conv],
-                        add_generation_prompt=True,
-                        tokenize=False,
-                    )
-                    for conv in prompts
-                ]
+        if isinstance(prompts[0], str):
+            prompts = [
+                self.tokenizer.apply_chat_template(
+                    [{"role": "user", "content": p}],
+                    add_generation_prompt=True,
+                    tokenize=False,
+                )
+                for p in prompts
+            ]
+        else:
+            prompts = [
+                self.tokenizer.apply_chat_template(
+                    [dataclasses.asdict(p) for p in conv],
+                    add_generation_prompt=True,
+                    tokenize=False,
+                )
+                for conv in prompts
+            ]      
 
         inputs = self.tokenizer(
             prompts,

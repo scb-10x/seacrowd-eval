@@ -6,6 +6,7 @@ import json
 
 HF_TOKEN = os.environ.get("TOKEN")
 RESULTS_REPO = os.environ.get('RESULTS_REPO')
+REQUESTS_REPO = os.environ.get('QUEUE_REPO')
 
 def upload_file(result_path: str, task_type: str, model_name: str):
     API = HfApi(token=HF_TOKEN)
@@ -120,6 +121,19 @@ def process_llm_result(model_name: str, outpath: str, full_model_name=None):
     upload_file(result_path, task_type, model_name)
     
 
+def update_model_status(full_model_name: str):
+    from utils import read_model_for_name
+    try:
+        all_models_with_names = read_model_for_name(full_model_name)
+        for v, p in all_models_with_names:
+            v['status'] = 'FINISHED'
+            with open(p, 'w') as w:
+                json.dump(v, w, ensure_ascii=False)
+    except Exception as e:
+        print(e)
+        pass
+        
+
 
 if __name__ == '__main__':
     import argparse
@@ -136,3 +150,4 @@ if __name__ == '__main__':
     process_nlu_result(model_name, args.result_path, full_model_name=full_model_name)
     process_nlg_result(model_name, args.result_path, full_model_name=full_model_name)
     process_llm_result(model_name, args.result_path, full_model_name=full_model_name)
+    update_model_status(full_model_name)

@@ -4,3 +4,4 @@ build_and_push.sh
 output*/
 metrics*/
 .env
+run.sh

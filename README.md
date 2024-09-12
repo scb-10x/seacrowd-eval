@@ -12,12 +12,12 @@ pip install -r requirements.txt
 
 ### Run Eval
 ```sh
-OPENAI_API_KEY=xxx RESULTS_REPO=ThaiLLM-Leaderboard/results QUEUE_REPO=ThaiLLM-Leaderboard/requests HF_TOKEN=xxx MODEL_NAME=airesearch/LLaMa3-8b-WangchanX-sft-Full sh eval_only.sh
+OPENAI_API_KEY=xxx MODEL_NAME=airesearch/LLaMa3-8b-WangchanX-sft-Full sh eval_only.sh
 ```
 
 ### Submit Eval Result
 ```sh
-python scripts/transform_result.py $MODEL_NAME
+RESULTS_REPO=ThaiLLM-Leaderboard/results HF_TOKEN=xxx python scripts/transform_result.py $MODEL_NAME
 ```
 
 ## Develop an Eval

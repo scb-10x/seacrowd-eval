@@ -6,7 +6,6 @@ import json
 
 HF_TOKEN = os.environ.get("TOKEN")
 RESULTS_REPO = os.environ.get('RESULTS_REPO')
-REQUESTS_REPO = os.environ.get('QUEUE_REPO')
 
 def upload_file(result_path: str, task_type: str, model_name: str):
     API = HfApi(token=HF_TOKEN)

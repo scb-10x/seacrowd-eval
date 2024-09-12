@@ -3,6 +3,7 @@ from collections import defaultdict
 from huggingface_hub import HfApi
 import os
 import json
+from utils import read_model_for_name
 
 HF_TOKEN = os.environ.get("TOKEN")
 RESULTS_REPO = os.environ.get('RESULTS_REPO')
@@ -121,9 +122,10 @@ def process_llm_result(model_name: str, outpath: str, full_model_name=None):
     
 
 def update_model_status(full_model_name: str):
-    from utils import read_model_for_name
     try:
-        all_models_with_names = read_model_for_name(full_model_name)
+        CACHE_PATH = os.getenv("HF_HOME", ".")
+        EVAL_REQUESTS_PATH = os.path.join(CACHE_PATH, "eval-queue")
+        all_models_with_names = read_model_for_name(full_model_name, EVAL_REQUESTS_PATH)
         for v, p in all_models_with_names:
             v['status'] = 'FINISHED'
             with open(p, 'w') as w:

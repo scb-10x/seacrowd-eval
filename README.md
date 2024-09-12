@@ -12,7 +12,7 @@ pip install -r requirements.txt
 
 ### Run Eval
 ```sh
-MODEL_NAME=airesearch/LLaMa3-8b-WangchanX-sft-Full sh runner.sh
+OPENAI_API_KEY=xxx RESULTS_REPO=ThaiLLM-Leaderboard/results QUEUE_REPO=ThaiLLM-Leaderboard/requests HF_TOKEN=xxx MODEL_NAME=airesearch/LLaMa3-8b-WangchanX-sft-Full sh eval_only.sh
 ```
 
 ### Submit Eval Result

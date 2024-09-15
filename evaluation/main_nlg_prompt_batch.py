@@ -56,11 +56,13 @@ def to_prompt(input, prompt, prompt_lang, task_name, task_type, with_label=False
     return prompt
 
 
-
+ 
 if __name__ == '__main__':
-    if len(sys.argv) != 5:
-        raise ValueError('main_nlg_prompt.py <prompt_lang> <model_path_or_name> <n_shot> <n_batch>')
-
+    if len(sys.argv) < 5:
+        raise ValueError('main_nlg_prompt.py <prompt_lang> <model_path_or_name> <n_shot> <batch_size>')
+    if len(sys.argv) > 7:
+        raise ValueError('main_nlg_prompt.py <prompt_lang> <model_path_or_name> <n_shot> <batch_size> <base_url> <api_key>')
+    
     out_dir = './outputs_nlg'
     metric_dir = './metrics_nlg'
     os.makedirs(out_dir, exist_ok=True)
@@ -69,9 +71,17 @@ if __name__ == '__main__':
     prompt_lang = sys.argv[1]
     MODEL = sys.argv[2]
     N_SHOT = int(sys.argv[3])
-    N_BATCH = int(sys.argv[4])
+    BATCH_SIZE = int(sys.argv[4])
     SAVE_EVERY = 10
+    BASE_URL = None
+    API_KEY = None
+    OPENAI_COMPATIBLE = False
+    if len(sys.argv) == 7:
+        BASE_URL = sys.argv[5]
+        API_KEY = sys.argv[6]
+        OPENAI_COMPATIBLE = True
 
+    
     # Load prompt
     prompt_templates = get_prompt(prompt_lang, return_only_one=True)
 
@@ -88,7 +98,9 @@ if __name__ == '__main__':
 
     # Load Model & Tokenizer
     # Tokenizer initialization
-    model_runner = load_model_runner(MODEL, fast=True)
+
+    # model_runner = load_model_runner(MODEL, fast=True)
+    model_runner = load_model_runner(MODEL, openai_compatible=OPENAI_COMPATIBLE, base_url=BASE_URL, api_key=API_KEY,fast=True) #Improve compatible with OpenAI API compatibility
 
     metrics = {'dataset': []}
     for i, dset_subset in enumerate(nlg_datasets.keys()):
@@ -166,8 +178,9 @@ if __name__ == '__main__':
                         batch_golds.append(sample['answer'][0] if 'answer' in sample else sample['text_2'])
 
                         # Batch inference
-                        if len(prompts) == N_BATCH:
-                            batch_preds = model_runner.predict_generation(prompts)
+                        # print(f'batch size: {len(prompts)}')
+                        if len(prompts) == BATCH_SIZE:
+                            batch_preds = model_runner.predict_generation(prompts,BATCH_SIZE=BATCH_SIZE)
                             for (prompt_text, pred, gold) in zip(prompts, batch_preds, batch_golds):
                                 inputs.append(prompt_text)
                                 preds.append(pred if pred is not None else '')
@@ -176,7 +189,7 @@ if __name__ == '__main__':
                             prompts, batch_golds = [], []
                             count += 1
 
-                        if count == SAVE_EVERY:
+                        if count % SAVE_EVERY == 0:
                             # partial saving
                             inference_df = pd.DataFrame(list(zip(inputs, preds, preds_latin, golds)), columns=['Input', 'Pred', 'Pred_Latin', 'Gold'])
                             inference_df.to_csv(f'{out_dir}/{dset_subset}_{prompt_lang}_{prompt_id}_{N_SHOT}_{MODEL.split("/")[-1]}.csv', index=False)
@@ -184,7 +197,7 @@ if __name__ == '__main__':
 
                     # Predict the rest inputs
                     if len(prompts) > 0:
-                        batch_preds = model_runner.predict_generation(prompts)
+                        batch_preds = model_runner.predict_generation(prompts,BATCH_SIZE=BATCH_SIZE)
                         for (prompt_text, pred, gold) in zip(prompts, batch_preds, batch_golds):
                             inputs.append(prompt_text)
                             preds.append(pred if pred is not None else '')

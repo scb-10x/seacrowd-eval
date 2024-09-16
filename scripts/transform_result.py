@@ -8,9 +8,10 @@ from utils import read_model_for_name
 HF_TOKEN = os.environ.get("TOKEN")
 RESULTS_REPO = os.environ.get('RESULTS_REPO')
 
+api = HfApi(token=HF_TOKEN)
+
 def upload_file(result_path: str, task_type: str, model_name: str):
-    API = HfApi(token=HF_TOKEN)
-    API.upload_file(
+    api.upload_file(
         path_or_fileobj=result_path,
         path_in_repo=f'{task_type}/{model_name}/results.json',
         repo_id=RESULTS_REPO,
@@ -126,15 +127,22 @@ def update_model_status(full_model_name: str):
         CACHE_PATH = os.getenv("HF_HOME", ".")
         EVAL_REQUESTS_PATH = os.path.join(CACHE_PATH, "eval-queue")
         all_models_with_names = read_model_for_name(full_model_name, EVAL_REQUESTS_PATH)
+        QUEUE_REPO = os.environ["QUEUE_REPO"]
         for v, p in all_models_with_names:
             v['status'] = 'FINISHED'
             with open(p, 'w') as w:
                 json.dump(v, w, ensure_ascii=False)
+            api.upload_file(
+                path_or_fileobj=p,
+                path_in_repo=p.split("eval-queue/")[1],
+                repo_id=QUEUE_REPO,
+                repo_type="dataset",
+                commit_message=f"Update {model_name} to eval queue",
+            )
     except Exception as e:
         print(e)
         pass
-        
-
+    
 
 if __name__ == '__main__':
     import argparse

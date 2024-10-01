@@ -15,8 +15,8 @@ from transformers import (
 import torch
 import torch.nn.functional as F
 import logging
-from functools import partial
 from tqdm import tqdm
+
 try:
     import google.generativeai as genai
 except ImportError:
@@ -37,17 +37,18 @@ def _call_openai(
     model_name: str,
     max_tokens=200,
     temperature=0.0,
-    **kwargs
-):            
+    **kwargs,
+):
     completion = openai_client.chat.completions.create(
         model=model_name,
         messages=messages,
         temperature=temperature,
         seed=42,
         max_tokens=max_tokens,
-        **kwargs
+        **kwargs,
     )
     return completion.choices[0].message.content
+
 
 @retry(Exception, tries=10, delay=20)
 def _call_anthropic(
@@ -55,21 +56,22 @@ def _call_anthropic(
     model_name: str,
     max_tokens=200,
     temperature=0.0,
-    **kwargs
+    **kwargs,
 ):
     system_kwargs = {}
-    if messages[0]['role'] == 'system':
+    if messages[0]["role"] == "system":
         system_msg = messages.pop(0)
-        system_kwargs['system'] = system_msg['content']
+        system_kwargs["system"] = system_msg["content"]
     message = anthropic_client.messages.create(
         model=model_name,
         max_tokens=max_tokens,
         messages=messages,
         temperature=temperature,
         **system_kwargs,
-        **kwargs
+        **kwargs,
     )
     return message.content[0].text
+
 
 @retry(Exception, tries=10, delay=20)
 def _call_gemini(
@@ -77,7 +79,7 @@ def _call_gemini(
     model_name: str,
     max_tokens=200,
     temperature=0.0,
-    **kwargs
+    **kwargs,
 ):
     messages = copy.deepcopy(messages)
     history = []
@@ -88,7 +90,7 @@ def _call_gemini(
         )
     else:
         gemini_client = genai.GenerativeModel(model_name)
-        
+
     safe = [
         {
             "category": "HARM_CATEGORY_DANGEROUS",
@@ -115,7 +117,7 @@ def _call_gemini(
     for msg in messages:
         role = "user" if msg["role"] == "user" else "model"
         history.append({"role": role, "parts": msg["content"]})
-    
+
     chat = gemini_client.start_chat(history=history)
     response = chat.send_message(
         last_msg["content"],
@@ -123,9 +125,9 @@ def _call_gemini(
             candidate_count=1,
             max_output_tokens=max_tokens,
             temperature=temperature,
-            **kwargs
+            **kwargs,
         ),
-        safety_settings=safe
+        safety_settings=safe,
     )
     return response.text
 
@@ -240,12 +242,14 @@ class AbsModel(abc.ABC):
     ) -> List[str]:
         raise NotImplementedError()
 
+
 def _parallel_generate(args):
     return _call_openai(messages=args[0], model_name=args[1])
 
+
 class APIModel(AbsModel):
 
-    def __init__(self, model_name, base_url = None, api_key = None):
+    def __init__(self, model_name, base_url=None, api_key=None):
         self.model_name = model_name
         self.generate_fn = None
         self.base_url = base_url
@@ -254,14 +258,16 @@ class APIModel(AbsModel):
         if "gpt" in self.model_name or (base_url is not None and api_key is not None):
             global openai_client
             from openai import OpenAI
+
             if base_url is not None and api_key is not None:
                 openai_client = OpenAI(base_url=base_url, api_key=api_key)
-            else : 
+            else:
                 openai_client = OpenAI()
             self.generate_fn = _call_openai
         elif "claude" in self.model_name:
             global anthropic_client
             from anthropic import Anthropic
+
             anthropic_client = Anthropic()
             self.generate_fn = _call_anthropic
         elif "gemini" in self.model_name:
@@ -272,7 +278,7 @@ class APIModel(AbsModel):
         self.max_generation_length = MAX_GENERATION_LENGTH
 
     def predict_classification(
-        self, prompts: List[str], labels: List[str], BATCH_SIZE = int
+        self, prompts: List[str], labels: List[str], BATCH_SIZE=int
     ):  # return List[len(prompts)] with int value as idx of each
         inputs = [
             [
@@ -285,13 +291,11 @@ class APIModel(AbsModel):
             for prompt in prompts
         ]
         hyps = []
-        # with Pool(min(8, len(prompts))) as p:
-        #     _generate_fn = partial(self.generate_fn,model_name=self.model_name)
-        #     results = p.map(_generate_fn, inputs)
-
         args = [(prompt, self.model_name) for prompt in inputs]
         with concurrent.futures.ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
-            results = list(tqdm(executor.map(_parallel_generate,args), total=len(prompts)))
+            results = list(
+                tqdm(executor.map(_parallel_generate, args), total=len(prompts))
+            )
 
         for response, _prompt in zip(results, prompts):
             selected_idx = -1
@@ -306,8 +310,9 @@ class APIModel(AbsModel):
             hyps.append(selected_idx)
         assert len(prompts) == len(hyps)
         return hyps
+
     def predict_generation(
-        self, prompts: List[Union[str, ChatMessage]], BATCH_SIZE = int, **kwargs
+        self, prompts: List[Union[str, ChatMessage]], BATCH_SIZE=int, **kwargs
     ) -> List[str]:
         if isinstance(prompts[0], str):
             prompts = [
@@ -318,19 +323,11 @@ class APIModel(AbsModel):
             ]
         else:
             prompts = [[dataclasses.asdict(p) for p in conv] for conv in prompts]
-        # with Pool(min(8, len(prompts))) as p:
-        #     _generate_fn = partial(
-        #         self.generate_fn,
-        #         model_name=self.model_name,
-        #         max_tokens=self.max_generation_length,
-        #         **kwargs
-        #     )
-        #     results = p.map(_generate_fn, prompts)
-            
-        ### Use ThreadPoolExecutor instead of Pool for better i/o performance
         args = [(prompt, self.model_name) for prompt in prompts]
         with concurrent.futures.ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
-            results = list(tqdm(executor.map(_parallel_generate,args), total=len(prompts)))
+            results = list(
+                tqdm(executor.map(_parallel_generate, args), total=len(prompts))
+            )
         return results
 
 
@@ -434,7 +431,7 @@ class HFModel(AbsModel):
                     tokenize=False,
                 )
                 for conv in prompts
-            ]      
+            ]
 
         inputs = self.tokenizer(
             prompts,
@@ -456,15 +453,17 @@ class HFModel(AbsModel):
             temperature=temperature,
             max_new_tokens=self.max_generation_length,
             eos_token_id=self._get_terminator(),
-            **kwargs
+            **kwargs,
         )
         preds = self.tokenizer.batch_decode(
             outputs[:, input_sizes:], skip_special_tokens=True
         )
         return preds
 
- 
-def load_model_runner(model_name: str, fast=False, openai_compatible = False, base_url=None, api_key=None):
+
+def load_model_runner(
+    model_name: str, fast=False, openai_compatible=False, base_url=None, api_key=None
+):
     if model_name in [
         "gpt-4o-mini-2024-07-18",
         "gpt-4o-2024-05-13",
@@ -472,13 +471,15 @@ def load_model_runner(model_name: str, fast=False, openai_compatible = False, ba
         "claude-3-5-sonnet-20240620",
         "gemini-1.5-flash-001",
         "gemini-1.5-pro-exp-0827",
-        "gemini-1.5-pro-001"
+        "gemini-1.5-pro-001",
     ]:
         model_runner = APIModel(model_name)
-    elif openai_compatible is True :
-        if openai_compatible is True and (base_url is None or api_key is None):
+    elif openai_compatible:
+        if openai_compatible and (base_url is None or api_key is None):
             raise ValueError("OpenAI compatible models require base_url and api_key.")
-        print(f'Using OpenAI API compatible with model {model_name}, base_url: {base_url}, api_key: {api_key}')
+        print(
+            f"Using OpenAI API compatible with model {model_name}, base_url: {base_url}, api_key: {api_key}"
+        )
         model_runner = APIModel(model_name, base_url, api_key)
     else:
         model_runner = HFModel(model_name, compile=fast)

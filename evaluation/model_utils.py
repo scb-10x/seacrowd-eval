@@ -278,7 +278,7 @@ class APIModel(AbsModel):
         self.max_generation_length = MAX_GENERATION_LENGTH
 
     def predict_classification(
-        self, prompts: List[str], labels: List[str], BATCH_SIZE=int
+        self, prompts: List[str], labels: List[str], batch_size: int = 4, **kwargs
     ):  # return List[len(prompts)] with int value as idx of each
         inputs = [
             [
@@ -292,7 +292,7 @@ class APIModel(AbsModel):
         ]
         hyps = []
         args = [(prompt, self.model_name) for prompt in inputs]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
             results = list(
                 tqdm(executor.map(_parallel_generate, args), total=len(prompts))
             )
@@ -312,7 +312,7 @@ class APIModel(AbsModel):
         return hyps
 
     def predict_generation(
-        self, prompts: List[Union[str, ChatMessage]], BATCH_SIZE=int, **kwargs
+        self, prompts: List[Union[str, ChatMessage]], batch_size: int = 4, **kwargs
     ) -> List[str]:
         if isinstance(prompts[0], str):
             prompts = [
@@ -324,7 +324,7 @@ class APIModel(AbsModel):
         else:
             prompts = [[dataclasses.asdict(p) for p in conv] for conv in prompts]
         args = [(prompt, self.model_name) for prompt in prompts]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
             results = list(
                 tqdm(executor.map(_parallel_generate, args), total=len(prompts))
             )
@@ -389,7 +389,7 @@ class HFModel(AbsModel):
         return logprobs.sum(dim=1).cpu()
 
     @torch.inference_mode()
-    def predict_classification(self, prompts: List[str], labels: List[str]):
+    def predict_classification(self, prompts: List[str], labels: List[str], **kwargs):
         probs = []
         for label in labels:
             inputs = [prompt.replace("[LABEL_CHOICE]", label) for prompt in prompts]

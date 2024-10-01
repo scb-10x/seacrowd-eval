@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
     prompt_lang = sys.argv[1]
     MODEL = sys.argv[2]
-    BATCH_SIZE = int(sys.argv[3])
+    BATCH_SIZE = int(sys.argv[3]) or 4
     BASE_URL = None
     API_KEY = None
     OPENAI_COMPATIBLE = False
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         openai_compatible=OPENAI_COMPATIBLE,
         base_url=BASE_URL,
         api_key=API_KEY,
-        fast=True,
+        fast=False,
     )
 
     with torch.no_grad():
@@ -210,7 +210,7 @@ if __name__ == "__main__":
                         # Batch Inference
                         if len(prompts) == BATCH_SIZE:
                             hyps = model_runner.predict_classification(
-                                prompts, label_names, BATCH_SIZE=BATCH_SIZE
+                                prompts, label_names, batch_size=BATCH_SIZE
                             )
                             for prompt_text, hyp, label in zip(prompts, hyps, labels):
                                 inputs.append(prompt_text)
@@ -221,7 +221,7 @@ if __name__ == "__main__":
 
                     if len(prompts) > 0:
                         hyps = model_runner.predict_classification(
-                            prompts, label_names, BATCH_SIZE=BATCH_SIZE
+                            prompts, label_names, batch_size=BATCH_SIZE
                         )
                         for prompt_text, hyp, label in zip(prompts, hyps, labels):
                             inputs.append(prompt_text)

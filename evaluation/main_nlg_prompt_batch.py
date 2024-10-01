@@ -74,7 +74,7 @@ if __name__ == "__main__":
     prompt_lang = sys.argv[1]
     MODEL = sys.argv[2]
     N_SHOT = int(sys.argv[3])
-    BATCH_SIZE = int(sys.argv[4])
+    BATCH_SIZE = int(sys.argv[4]) or 4
     SAVE_EVERY = 10
     BASE_URL = None
     API_KEY = None
@@ -210,7 +210,7 @@ if __name__ == "__main__":
                         # Batch inference
                         if len(prompts) == BATCH_SIZE:
                             batch_preds = model_runner.predict_generation(
-                                prompts, BATCH_SIZE=BATCH_SIZE
+                                prompts, batch_size=BATCH_SIZE
                             )
                             for prompt_text, pred, gold in zip(
                                 prompts, batch_preds, batch_golds
@@ -239,7 +239,7 @@ if __name__ == "__main__":
                     # Predict the rest inputs
                     if len(prompts) > 0:
                         batch_preds = model_runner.predict_generation(
-                            prompts, BATCH_SIZE=BATCH_SIZE
+                            prompts, batch_size=BATCH_SIZE
                         )
                         for prompt_text, pred, gold in zip(
                             prompts, batch_preds, batch_golds

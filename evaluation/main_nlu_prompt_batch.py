@@ -51,10 +51,19 @@ def to_prompt(input, prompt, labels, prompt_lang, schema):
 if __name__ == '__main__':
     if len(sys.argv) < 4:
         raise ValueError('main_nlu_prompt.py <prompt_lang> <model_path_or_name> <batch_size>')
+    if len(sys.argv) > 6:
+        raise ValueError('main_nlu_prompt.py <prompt_lang> <model_path_or_name> <batch_size> <base_url> <api_key>')
 
     prompt_lang = sys.argv[1]
     MODEL = sys.argv[2]
     BATCH_SIZE = int(sys.argv[3])
+    BASE_URL = None
+    API_KEY = None
+    OPENAI_COMPATIBLE = False
+    if len(sys.argv) == 6:
+        BASE_URL = sys.argv[4]
+        API_KEY = sys.argv[5]
+        OPENAI_COMPATIBLE = True
 
     out_dir = './outputs_nlu'
     metric_dir = './metrics_nlu'
@@ -75,7 +84,9 @@ if __name__ == '__main__':
     # Set seed before initializing model.
     set_seed(42)
 
-    model_runner = load_model_runner(MODEL)
+    # model_runner = load_model_runner(MODEL)
+    model_runner = load_model_runner(MODEL, openai_compatible=OPENAI_COMPATIBLE, base_url=BASE_URL, api_key=API_KEY,fast=True) #Improve compatible with OpenAI API compatibility
+
 
     with torch.no_grad():
         metrics = []
@@ -165,7 +176,7 @@ if __name__ == '__main__':
 
                         # Batch Inference
                         if len(prompts) == BATCH_SIZE:
-                            hyps = model_runner.predict_classification(prompts, label_names)
+                            hyps = model_runner.predict_classification(prompts, label_names, BATCH_SIZE=BATCH_SIZE)
                             for (prompt_text, hyp, label) in zip(prompts, hyps, labels):
                                 inputs.append(prompt_text)
                                 preds.append(hyp)
@@ -174,7 +185,7 @@ if __name__ == '__main__':
                             count += 1
                             
                     if len(prompts) > 0:
-                        hyps = model_runner.predict_classification(prompts, label_names)
+                        hyps = model_runner.predict_classification(prompts, label_names, BATCH_SIZE=BATCH_SIZE)
                         for (prompt_text, hyp, label) in zip(prompts, hyps, labels):
                             inputs.append(prompt_text)
                             preds.append(hyp)

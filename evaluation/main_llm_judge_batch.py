@@ -38,6 +38,8 @@ class LLMJudgeEvalHandler:
         model_name: str,
         data_path: str,
         judge_num_workers=8,
+        model_base_url=None,
+        model_base_api=None
     ) -> None:
         self.data_path = data_path
         self.judge_num_workers = judge_num_workers
@@ -45,6 +47,8 @@ class LLMJudgeEvalHandler:
         self.openai_client = OpenAI()
         self.judge_prompts = self._load_judge_prompts()
         self.model_runner = load_model_runner(model_name, fast=True)
+        if model_base_url is not None and model_base_api is not None :
+            self.model_runner = load_model_runner(model_name, fast=True, openai_compatible=True,base_url=model_base_url,api_key=model_base_api)
 
     
     def _load_judge_prompts(self):
@@ -254,12 +258,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='LLM as judge evalulator')
     parser.add_argument('model_name')
     parser.add_argument('--data')
+    parser.add_argument('--base_url',default=None)
+    parser.add_argument('--api_key',default=None)
     parser.add_argument('--output-path', default='outputs_llm')
     parser.add_argument('--metric-path', default='metrics_llm')
     args = parser.parse_args()
 
     model_name = args.model_name
-    handler = LLMJudgeEvalHandler(model_name, args.data)
+    if args.base_url is not None and args.api_key is not None :
+        handler = LLMJudgeEvalHandler(model_name, args.data, model_base_api=args.api_key, model_base_url=args.base_url)
+    else :
+        handler = LLMJudgeEvalHandler(model_name, args.data)
     metric_results, judge_results  = handler.pipeline()
     
     print('avg_rating: ', metric_results['avg_rating'])

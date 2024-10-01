@@ -3,6 +3,7 @@ import copy
 from dataclasses import dataclass
 import dataclasses
 from multiprocessing import Pool
+import concurrent.futures
 import os
 from typing import Dict, Optional, List, Union
 import numpy as np
@@ -15,7 +16,7 @@ import torch
 import torch.nn.functional as F
 import logging
 from functools import partial
-
+from tqdm import tqdm
 try:
     import google.generativeai as genai
 except ImportError:
@@ -37,7 +38,7 @@ def _call_openai(
     max_tokens=200,
     temperature=0.0,
     **kwargs
-):
+):            
     completion = openai_client.chat.completions.create(
         model=model_name,
         messages=messages,
@@ -239,22 +240,28 @@ class AbsModel(abc.ABC):
     ) -> List[str]:
         raise NotImplementedError()
 
+def _parallel_generate(args):
+    return _call_openai(messages=args[0], model_name=args[1])
 
 class APIModel(AbsModel):
 
-    def __init__(self, model_name):
+    def __init__(self, model_name, base_url = None, api_key = None):
         self.model_name = model_name
         self.generate_fn = None
-        if "gpt" in self.model_name:
+        self.base_url = base_url
+        self.api_key = api_key
+        self.openai_client = None
+        if "gpt" in self.model_name or (base_url is not None and api_key is not None):
             global openai_client
             from openai import OpenAI
-
-            openai_client = OpenAI()
+            if base_url is not None and api_key is not None:
+                openai_client = OpenAI(base_url=base_url, api_key=api_key)
+            else : 
+                openai_client = OpenAI()
             self.generate_fn = _call_openai
         elif "claude" in self.model_name:
             global anthropic_client
             from anthropic import Anthropic
-
             anthropic_client = Anthropic()
             self.generate_fn = _call_anthropic
         elif "gemini" in self.model_name:
@@ -265,7 +272,7 @@ class APIModel(AbsModel):
         self.max_generation_length = MAX_GENERATION_LENGTH
 
     def predict_classification(
-        self, prompts: List[str], labels: List[str]
+        self, prompts: List[str], labels: List[str], BATCH_SIZE = int
     ):  # return List[len(prompts)] with int value as idx of each
         inputs = [
             [
@@ -278,9 +285,13 @@ class APIModel(AbsModel):
             for prompt in prompts
         ]
         hyps = []
-        with Pool(min(8, len(prompts))) as p:
-            _generate_fn = partial(self.generate_fn, model_name=self.model_name)
-            results = p.map(_generate_fn, inputs)
+        # with Pool(min(8, len(prompts))) as p:
+        #     _generate_fn = partial(self.generate_fn,model_name=self.model_name)
+        #     results = p.map(_generate_fn, inputs)
+
+        args = [(prompt, self.model_name) for prompt in inputs]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+            results = list(tqdm(executor.map(_parallel_generate,args), total=len(prompts)))
 
         for response, _prompt in zip(results, prompts):
             selected_idx = -1
@@ -295,9 +306,8 @@ class APIModel(AbsModel):
             hyps.append(selected_idx)
         assert len(prompts) == len(hyps)
         return hyps
-
     def predict_generation(
-        self, prompts: List[Union[str, ChatMessage]], **kwargs
+        self, prompts: List[Union[str, ChatMessage]], BATCH_SIZE = int, **kwargs
     ) -> List[str]:
         if isinstance(prompts[0], str):
             prompts = [
@@ -308,15 +318,19 @@ class APIModel(AbsModel):
             ]
         else:
             prompts = [[dataclasses.asdict(p) for p in conv] for conv in prompts]
-
-        with Pool(min(8, len(prompts))) as p:
-            _generate_fn = partial(
-                self.generate_fn,
-                model_name=self.model_name,
-                max_tokens=self.max_generation_length,
-                **kwargs
-            )
-            results = p.map(_generate_fn, prompts)
+        # with Pool(min(8, len(prompts))) as p:
+        #     _generate_fn = partial(
+        #         self.generate_fn,
+        #         model_name=self.model_name,
+        #         max_tokens=self.max_generation_length,
+        #         **kwargs
+        #     )
+        #     results = p.map(_generate_fn, prompts)
+            
+        ### Use ThreadPoolExecutor instead of Pool for better i/o performance
+        args = [(prompt, self.model_name) for prompt in prompts]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+            results = list(tqdm(executor.map(_parallel_generate,args), total=len(prompts)))
         return results
 
 
@@ -449,8 +463,8 @@ class HFModel(AbsModel):
         )
         return preds
 
-
-def load_model_runner(model_name: str, fast=False):
+ 
+def load_model_runner(model_name: str, fast=False, openai_compatible = False, base_url=None, api_key=None):
     if model_name in [
         "gpt-4o-mini-2024-07-18",
         "gpt-4o-2024-05-13",
@@ -461,6 +475,11 @@ def load_model_runner(model_name: str, fast=False):
         "gemini-1.5-pro-001"
     ]:
         model_runner = APIModel(model_name)
+    elif openai_compatible is True :
+        if openai_compatible is True and (base_url is None or api_key is None):
+            raise ValueError("OpenAI compatible models require base_url and api_key.")
+        print(f'Using OpenAI API compatible with model {model_name}, base_url: {base_url}, api_key: {api_key}')
+        model_runner = APIModel(model_name, base_url, api_key)
     else:
         model_runner = HFModel(model_name, compile=fast)
     return model_runner

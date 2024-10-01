@@ -8,9 +8,10 @@ from utils import read_model_for_name
 HF_TOKEN = os.environ.get("TOKEN")
 RESULTS_REPO = os.environ.get('RESULTS_REPO')
 
+api = HfApi(token=HF_TOKEN)
+
 def upload_file(result_path: str, task_type: str, model_name: str):
-    API = HfApi(token=HF_TOKEN)
-    API.upload_file(
+    api.upload_file(
         path_or_fileobj=result_path,
         path_in_repo=f'{task_type}/{model_name}/results.json',
         repo_id=RESULTS_REPO,
@@ -29,7 +30,7 @@ def process_nlu_result(model_name: str, outpath: str, full_model_name=None):
     file_path = f'metrics_nlu/nlu_results_tha_{model_name}.csv'
     if not os.path.exists(file_path):
         print(f'skip upload NLU/MC result {file_path} not found')
-        return
+        return False
     df = pd.read_csv(file_path)
     results = {'NLU': defaultdict(list), 'MC': defaultdict(list)}
     dataset_key = 'dataset'
@@ -59,6 +60,7 @@ def process_nlu_result(model_name: str, outpath: str, full_model_name=None):
         with open(result_path, 'w') as w:
             json.dump(data, w, ensure_ascii=False)
         upload_file(result_path, task_type, model_name)
+    return True
 
 
 def process_nlg_result(model_name: str, outpath: str, full_model_name=None):
@@ -66,7 +68,7 @@ def process_nlg_result(model_name: str, outpath: str, full_model_name=None):
     task_type = 'NLG'
     if not os.path.exists(file_path):
         print(f'skip upload {task_type} result {file_path} not found')
-        return
+        return False
     df = pd.read_csv(file_path)
     results = defaultdict(dict)
     dataset_key = 'dataset'
@@ -94,13 +96,14 @@ def process_nlg_result(model_name: str, outpath: str, full_model_name=None):
         json.dump(data, w, ensure_ascii=False)
     
     upload_file(result_path, task_type, model_name)
+    return True
 
 def process_llm_result(model_name: str, outpath: str, full_model_name=None):
     task_type = 'LLM'
     file_path = f'metrics_llm/{model_name}.json'
     if not os.path.exists(file_path):
         print(f'skip upload {task_type} result {file_path} not found')
-        return
+        return False
     results = defaultdict(dict)
     with open(file_path) as f:
         d = json.load(f)
@@ -119,6 +122,7 @@ def process_llm_result(model_name: str, outpath: str, full_model_name=None):
         json.dump(data, w, ensure_ascii=False)
         
     upload_file(result_path, task_type, model_name)
+    return True
     
 
 def update_model_status(full_model_name: str):
@@ -126,15 +130,22 @@ def update_model_status(full_model_name: str):
         CACHE_PATH = os.getenv("HF_HOME", ".")
         EVAL_REQUESTS_PATH = os.path.join(CACHE_PATH, "eval-queue")
         all_models_with_names = read_model_for_name(full_model_name, EVAL_REQUESTS_PATH)
+        QUEUE_REPO = os.environ["QUEUE_REPO"]
         for v, p in all_models_with_names:
             v['status'] = 'FINISHED'
             with open(p, 'w') as w:
                 json.dump(v, w, ensure_ascii=False)
+            api.upload_file(
+                path_or_fileobj=p,
+                path_in_repo=p.split("eval-queue/")[1],
+                repo_id=QUEUE_REPO,
+                repo_type="dataset",
+                commit_message=f"Update {model_name} to eval queue",
+            )
     except Exception as e:
         print(e)
         pass
-        
-
+    
 
 if __name__ == '__main__':
     import argparse
@@ -148,7 +159,15 @@ if __name__ == '__main__':
     else:
         model_name = full_model_name
         full_model_name = f'api/{model_name}'
-    process_nlu_result(model_name, args.result_path, full_model_name=full_model_name)
-    process_nlg_result(model_name, args.result_path, full_model_name=full_model_name)
-    process_llm_result(model_name, args.result_path, full_model_name=full_model_name)
-    update_model_status(full_model_name)
+    has_success = False
+    status = process_nlu_result(model_name, args.result_path, full_model_name=full_model_name)
+    if status:
+        has_success = True
+    status = process_nlg_result(model_name, args.result_path, full_model_name=full_model_name)
+    if status:
+        has_success = True
+    status = process_llm_result(model_name, args.result_path, full_model_name=full_model_name)
+    if status:
+        has_success = True
+    if has_success:
+        update_model_status(full_model_name)

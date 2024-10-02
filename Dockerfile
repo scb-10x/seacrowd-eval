@@ -6,6 +6,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN pip install dumb-init
 COPY requirements.txt /
 RUN pip install -r /requirements.txt
+RUN apt-get update && apt-get install -y vim
 ENV TRUST_REMOTE_CODE=true
 
 COPY . .

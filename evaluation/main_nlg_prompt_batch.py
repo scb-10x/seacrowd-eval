@@ -79,6 +79,7 @@ if __name__ == "__main__":
     BASE_URL = None
     API_KEY = None
     OPENAI_COMPATIBLE = False
+    
     if len(sys.argv) == 7:
         BASE_URL = sys.argv[5]
         API_KEY = sys.argv[6]
@@ -103,6 +104,7 @@ if __name__ == "__main__":
         openai_compatible=OPENAI_COMPATIBLE,
         base_url=BASE_URL,
         api_key=API_KEY,
+        batch_size=BATCH_SIZE,
         fast=True,
     )
 
@@ -210,7 +212,7 @@ if __name__ == "__main__":
                         # Batch inference
                         if len(prompts) == BATCH_SIZE:
                             batch_preds = model_runner.predict_generation(
-                                prompts, batch_size=BATCH_SIZE
+                                prompts,
                             )
                             for prompt_text, pred, gold in zip(
                                 prompts, batch_preds, batch_golds
@@ -239,7 +241,7 @@ if __name__ == "__main__":
                     # Predict the rest inputs
                     if len(prompts) > 0:
                         batch_preds = model_runner.predict_generation(
-                            prompts, batch_size=BATCH_SIZE
+                            prompts,
                         )
                         for prompt_text, pred, gold in zip(
                             prompts, batch_preds, batch_golds

@@ -42,6 +42,7 @@ def main():
     to_run = list(set(to_run))
     with open(f"{outpath}/run.sh", "w") as w:
         for model_name in to_run:
+            print('adding ...', model_name)
             w.write(f"MODEL_NAME={model_name} sh runner.sh\n")
 
 

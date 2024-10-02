@@ -101,6 +101,7 @@ if __name__ == "__main__":
         openai_compatible=OPENAI_COMPATIBLE,
         base_url=BASE_URL,
         api_key=API_KEY,
+        batch_size=BATCH_SIZE,
         fast=False,
     )
 
@@ -210,7 +211,7 @@ if __name__ == "__main__":
                         # Batch Inference
                         if len(prompts) == BATCH_SIZE:
                             hyps = model_runner.predict_classification(
-                                prompts, label_names, batch_size=BATCH_SIZE
+                                prompts, label_names,
                             )
                             for prompt_text, hyp, label in zip(prompts, hyps, labels):
                                 inputs.append(prompt_text)
@@ -221,7 +222,7 @@ if __name__ == "__main__":
 
                     if len(prompts) > 0:
                         hyps = model_runner.predict_classification(
-                            prompts, label_names, batch_size=BATCH_SIZE
+                            prompts, label_names,
                         )
                         for prompt_text, hyp, label in zip(prompts, hyps, labels):
                             inputs.append(prompt_text)

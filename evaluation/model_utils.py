@@ -249,12 +249,13 @@ def _parallel_generate(args):
 
 class APIModel(AbsModel):
 
-    def __init__(self, model_name, base_url=None, api_key=None):
+    def __init__(self, model_name, base_url=None, api_key=None, batch_size:int = 4):
         self.model_name = model_name
         self.generate_fn = None
         self.base_url = base_url
         self.api_key = api_key
         self.openai_client = None
+        self.batch_size = batch_size
         if "gpt" in self.model_name or (base_url is not None and api_key is not None):
             global openai_client
             from openai import OpenAI
@@ -278,7 +279,7 @@ class APIModel(AbsModel):
         self.max_generation_length = MAX_GENERATION_LENGTH
 
     def predict_classification(
-        self, prompts: List[str], labels: List[str], batch_size: int = 4, **kwargs
+        self, prompts: List[str], labels: List[str], **kwargs
     ):  # return List[len(prompts)] with int value as idx of each
         inputs = [
             [
@@ -292,7 +293,7 @@ class APIModel(AbsModel):
         ]
         hyps = []
         args = [(prompt, self.model_name) for prompt in inputs]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.batch_size) as executor:
             results = list(
                 tqdm(executor.map(_parallel_generate, args), total=len(prompts))
             )
@@ -312,7 +313,7 @@ class APIModel(AbsModel):
         return hyps
 
     def predict_generation(
-        self, prompts: List[Union[str, ChatMessage]], batch_size: int = 4, **kwargs
+        self, prompts: List[Union[str, ChatMessage]], **kwargs
     ) -> List[str]:
         if isinstance(prompts[0], str):
             prompts = [
@@ -324,7 +325,7 @@ class APIModel(AbsModel):
         else:
             prompts = [[dataclasses.asdict(p) for p in conv] for conv in prompts]
         args = [(prompt, self.model_name) for prompt in prompts]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.batch_size) as executor:
             results = list(
                 tqdm(executor.map(_parallel_generate, args), total=len(prompts))
             )
@@ -413,7 +414,9 @@ class HFModel(AbsModel):
         return terminators
 
     @torch.inference_mode()
-    def predict_generation(self, prompts: List[Union[str, ChatMessage]], **kwargs):
+    def predict_generation(
+        self, prompts: List[Union[str, ChatMessage]], **kwargs
+    ):
         if isinstance(prompts[0], str):
             prompts = [
                 self.tokenizer.apply_chat_template(
@@ -462,7 +465,7 @@ class HFModel(AbsModel):
 
 
 def load_model_runner(
-    model_name: str, fast=False, openai_compatible=False, base_url=None, api_key=None
+    model_name: str, fast=False, openai_compatible=False, base_url=None, api_key=None, batch_size=4
 ):
     if model_name in [
         "gpt-4o-mini-2024-07-18",
@@ -480,7 +483,7 @@ def load_model_runner(
         print(
             f"Using OpenAI API compatible with model {model_name}, base_url: {base_url}, api_key: {api_key}"
         )
-        model_runner = APIModel(model_name, base_url, api_key)
+        model_runner = APIModel(model_name, base_url=base_url, api_key=api_key, batch_size=batch_size)
     else:
         model_runner = HFModel(model_name, compile=fast)
     return model_runner

@@ -2,7 +2,7 @@ import abc
 import copy
 from dataclasses import dataclass
 import dataclasses
-from multiprocessing import Pool
+from functools import partial
 import concurrent.futures
 import os
 from typing import Dict, Optional, List, Union
@@ -292,10 +292,10 @@ class APIModel(AbsModel):
             for prompt in prompts
         ]
         hyps = []
-        args = [(prompt, self.model_name) for prompt in inputs]
+        _fn = partial(self.generate_fn, model_name=self.model_name)
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.batch_size) as executor:
             results = list(
-                tqdm(executor.map(_parallel_generate, args), total=len(prompts))
+                tqdm(executor.map(_fn, inputs), total=len(prompts))
             )
 
         for response, _prompt in zip(results, prompts):
@@ -324,10 +324,10 @@ class APIModel(AbsModel):
             ]
         else:
             prompts = [[dataclasses.asdict(p) for p in conv] for conv in prompts]
-        args = [(prompt, self.model_name) for prompt in prompts]
+        _fn = partial(self.generate_fn, model_name=self.model_name)
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.batch_size) as executor:
             results = list(
-                tqdm(executor.map(_parallel_generate, args), total=len(prompts))
+                tqdm(executor.map(_fn, prompts), total=len(prompts))
             )
         return results
 

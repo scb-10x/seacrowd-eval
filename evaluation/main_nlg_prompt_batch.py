@@ -149,7 +149,7 @@ if __name__ == "__main__":
                 for sample in tqdm(few_shot_data):
                     # Skip shot examples
                     if (
-                        task_type != Tasks.QUESTION_ANSWERING
+                        task_type.value != "QA"
                         and len(sample["text_1"]) < 20
                     ):
                         continue
